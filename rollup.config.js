@@ -8,12 +8,39 @@ import {
 } from 'rollup-plugin-terser';
 import config from 'sapper/config/rollup.js';
 import postcss from 'rollup-plugin-postcss';
-import sass from 'node-sass';
+import sass from 'sass';
 import pkg from './package.json';
 
 const mode = process.env.NODE_ENV;
 const dev = mode === 'development';
 const legacy = !!process.env.SAPPER_LEGACY_BUILD;
+
+const preprocess ={
+	style: ({ content, attributes }) => {
+		if (attributes.lang !== 'scss') return;
+		return new Promise((resolve, reject) => {
+			sass.render({
+				data: content,
+				includePaths: ['src', 'node_modules'],
+				sourceMap: true,
+				outFile: 'x' // this is necessary, but is ignored
+			}, (err, result) => {
+				if (err) return reject(err);
+
+				resolve({
+					code: result.css.toString(),
+					map: result.map.toString()
+				});
+			});
+		});
+	}
+};
+const onwarn = warning => {
+	if (warning.code !== 'css-unused-selector') {
+		console.warn(warning.message);
+		console.warn(warning.frame);
+	}
+}
 
 export default {
 	client: {
@@ -29,27 +56,8 @@ export default {
 				dev,
 				hydratable: true,
 				emitCss: true,
-
-				// preprocess: {
-				// 	style: ({ content, attributes }) => {
-				// 		if (attributes.type !== 'scss') return;
-				// 		return new Promise((resolve, reject) => {
-				// 			sass.render({
-				// 				data: content,
-				// 				includePaths: ['src'],
-				// 				sourceMap: true,
-				// 				outFile: 'x' // this is necessary, but is ignored
-				// 			}, (err, result) => {
-				// 				if (err) return reject(err);
-
-				// 				resolve({
-				// 					code: result.css.toString(),
-				// 					map: result.map.toString()
-				// 				});
-				// 			});
-				// 		});
-				// 	}
-				// },
+				preprocess,
+				onwarn,
 			}),
 			resolve(),
 			commonjs(),
@@ -88,6 +96,8 @@ export default {
 			postcss(),
 			svelte({
 				generate: 'ssr',
+				preprocess,
+				onwarn,
 				dev
 			}),
 			resolve(),
